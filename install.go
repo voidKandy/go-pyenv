@@ -23,12 +23,48 @@ var versions = map[string]string{
 	"darwin/amd64":  "cpython-3.12.5+20240814-x86_64-apple-darwin-pgo+lto-full.tar.zst",
 	"linux/arm64":   "cpython-3.12.5+20240814-aarch64-unknown-linux-gnu-lto-full.tar.zst",
 	"linux/amd64":   "cpython-3.12.5+20240814-x86_64-unknown-linux-gnu-pgo+lto-full.tar.zst",
-	// "linux_gnu_x64_v2":  "cpython-3.12.5+20240814-x86_64_v2-unknown-linux-gnu-pgo+lto-full.tar.zst",
-	// "linux_gnu_x64_v3":  "cpython-3.12.5+20240814-x86_64_v3-unknown-linux-gnu-pgo+lto-full.tar.zst",
-	// "linux_gnu_x64_v4":  "cpython-3.12.5+20240814-x86_64_v4-unknown-linux-gnu-lto-full.tar.zst",
 }
 
-func (env *PyEnv) Install() error {
+// Darwin installer
+func (env *DarwinPyEnv) Install() error {
+	err := installHelper(env.EnvOptions)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Linux installer
+func (env *LinuxPyEnv) Install() error {
+	err := installHelper(env.EnvOptions)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Windows installer
+func (env *WindowsPyEnv) Install() error {
+	err := installHelper(env.EnvOptions)
+	if err != nil {
+		return err
+	}
+
+	// install pip
+	fp := filepath.Join(env.EnvOptions.ParentPath, "dist/python/install/python.exe")
+	log.Printf("installing pip to: %s\n", filepath.Join(env.EnvOptions.ParentPath, "dist/python/install/Scripts"))
+	cmd := exec.Command(fp, "-m", "ensurepip", "--upgrade")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("problem installing pip: %v", err)
+	}
+	log.Println("installing pip complete")
+
+	return nil
+}
+
+// helper functions
+
+func installHelper(env *PyEnvOptions) error {
 	targetDir := filepath.Join(env.ParentPath, DIST_DIR)
 	err := os.MkdirAll(targetDir, os.ModePerm)
 	if err != nil {
@@ -37,10 +73,10 @@ func (env *PyEnv) Install() error {
 	version := env.Distribution
 	arch := versions[version]
 	downloadPath := filepath.Join(targetDir, "python_download")
-	downloadUrl := fmt.Sprintf("https://github.com/indygreg/python-build-standalone/releases/download/20240814/%s", arch)
+	downloadUrl := fmt.Sprintf("https://github.com/indygreg/python-build-standalone/releases/download/20240814/%v", arch)
 
 	r, err := http.Get(downloadUrl)
-	log.Printf("downloading embedded python tar from: %s\n", downloadUrl)
+	log.Printf("downloading embedded python tar from: %v\n", downloadUrl)
 	if err != nil {
 		return fmt.Errorf("download failed: %v", err)
 	}
@@ -71,22 +107,12 @@ func (env *PyEnv) Install() error {
 		return err
 	}
 
-	if strings.Contains(env.Distribution, "windows") {
-		fp := filepath.Join(env.ParentPath, "dist/python/install/python.exe")
-		log.Printf("installing pip to: %s\n", filepath.Join(env.ParentPath, "dist/python/install/Scripts"))
-		err := installWindowsPip(fp)
-		if err != nil {
-			return fmt.Errorf("problem installing pip: %v", err)
-		}
-		log.Println("installing pip complete")
-	}
-
-	env.Compressed = false
-
 	err = os.Remove(downloadPath)
 	if err != nil {
 		return fmt.Errorf("error removing download: %v", err)
 	}
+
+	env.Compressed = false
 	return nil
 }
 
@@ -177,13 +203,4 @@ func validRelPath(p string) bool {
 		return false
 	}
 	return true
-}
-
-func installWindowsPip(fp string) error {
-	// https://pip.pypa.io/en/stable/installation/
-	cmd := exec.Command(fp, "-m", "ensurepip", "--upgrade")
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	return nil
 }
