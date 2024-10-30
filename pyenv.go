@@ -32,9 +32,11 @@ type PyEnv struct {
 	Executor
 }
 
-type DarwinPyEnv struct{ EnvOptions *PyEnvOptions }
-type LinuxPyEnv struct{ EnvOptions *PyEnvOptions }
-type WindowsPyEnv struct{ EnvOptions *PyEnvOptions }
+type (
+	DarwinPyEnv  struct{ EnvOptions *PyEnvOptions }
+	LinuxPyEnv   struct{ EnvOptions *PyEnvOptions }
+	WindowsPyEnv struct{ EnvOptions *PyEnvOptions }
+)
 
 func NewPyEnv(path string, dist string) (*PyEnv, error) {
 	homedir, err := os.UserHomeDir()
@@ -80,15 +82,22 @@ func NewPyEnv(path string, dist string) (*PyEnv, error) {
 }
 
 func (env *PyEnvOptions) DistExists() (*bool, error) {
-	fp := filepath.Join(env.ParentPath, "dist")
-	_, err := os.Stat(fp)
 	t := true
 	f := false
+	_, err := os.Stat(DistDirPath(env))
 	if err == nil {
 		return &t, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		return &f, nil
+		_, err = os.Stat(DistZipPath(env))
+		if err == nil {
+			return &t, nil
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			return &f, nil
+		}
+		return nil, err
+
 	}
 	return nil, err
 }
@@ -98,15 +107,15 @@ func (env *PyEnvOptions) CompressDist() error {
 		return fmt.Errorf("dist is already compressed")
 	}
 
-	if err := compressDir(distPath(env), compressionTarget(env)); err != nil {
+	if err := compressDir(DistDirPath(env), DistZipPath(env)); err != nil {
 		return fmt.Errorf("error compressing python environment: %v", err)
 	}
 	env.Compressed = true
 
-	if err := os.RemoveAll(distPath(env)); err != nil {
+	if err := os.RemoveAll(DistDirPath(env)); err != nil {
 		return fmt.Errorf("error removing old uncompressed evironment: %v", err)
 	}
-	log.Printf("removed %v\n", distPath(env))
+	log.Printf("removed %v\n", DistDirPath(env))
 	return nil
 }
 
@@ -118,20 +127,20 @@ func (env *PyEnvOptions) DecompressDist() error {
 
 	env.Compressed = false
 
-	if err := unzipSource(compressionTarget(env), distPath(env)); err != nil {
+	if err := unzipSource(DistZipPath(env), DistDirPath(env)); err != nil {
 		return fmt.Errorf("error unzipping compressed evironment: %v", err)
 	}
-	if err := os.RemoveAll(compressionTarget(env)); err != nil {
+	if err := os.RemoveAll(DistZipPath(env)); err != nil {
 		return fmt.Errorf("error removing old compressed evironment: %v", err)
 	}
-	log.Printf("removed %v\n", compressionTarget(env))
+	log.Printf("removed %v\n", DistZipPath(env))
 	return nil
 }
 
-func distPath(env *PyEnvOptions) string {
+func DistDirPath(env *PyEnvOptions) string {
 	return filepath.Join(env.ParentPath, "dist")
 }
 
-func compressionTarget(env *PyEnvOptions) string {
-	return distPath(env) + ZIP_FILE_EXT
+func DistZipPath(env *PyEnvOptions) string {
+	return DistDirPath(env) + ZIP_FILE_EXT
 }
